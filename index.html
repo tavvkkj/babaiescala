@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Escala de Trabalho</title>
+    <link rel="stylesheet" href="styles.css"> 
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&family=Roboto+Mono&display=swap" rel="stylesheet">
+    <style>
+        body { align-items: flex-start; }
+        .container { max-width: 600px; width: 95%; margin: 20px auto; visibility: hidden; opacity: 0; transition: opacity 0.5s ease-in-out; padding: 15px; box-sizing: border-box; }
+        .container.loaded { visibility: visible; opacity: 1; }
+        header h1 { font-size: 2em; margin-bottom: 5px; }
+        header p { font-size: 0.9em; margin-bottom: 20px; }
+        .form-group button, .button-grid button { padding: 12px 15px; font-size: 0.95em; }
+        .button-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+        #scheduleList { height: 55vh; overflow-y: auto; padding: 10px; margin-top: 15px; border: 1px solid #333; border-radius: var(--border-radius); background-color: var(--bg-tertiary); scroll-behavior: smooth; }
+        .schedule-item { background-color: rgba(30, 30, 30, 0.7); padding: 12px 15px; margin-bottom: 8px; border-radius: 8px; font-size: 14px; display: flex; justify-content: space-between; align-items: center; opacity: 0; transform: translateY(20px); animation: slideInUp 0.5s ease-out forwards; transition: transform 0.2s ease, border-color 0.2s ease; border: 1px solid transparent; }
+        .schedule-item.today { border-color: var(--accent-color); }
+        .schedule-item.focused { border-color: var(--pending-color); transform: scale(1.02) translateY(0); }
+        .date-info b { color: var(--text-primary); }
+        .date-info span { color: var(--text-secondary); }
+        .status-work { color: var(--success-color); background-color: rgba(68, 255, 102, 0.15); }
+        .status-off { color: var(--pending-color); background-color: rgba(68, 170, 255, 0.1); }
+        #loading-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: var(--bg-primary); display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 1001; opacity: 0; transition: opacity 0.4s ease; }
+        #loading-screen.visible { display: flex; }
+        #loading-screen .spinner { width: 60px; height: 60px; border-width: 6px; }
+        #loading-screen p { margin-top: 20px; font-size: 1.1em; color: var(--text-secondary); font-family: 'Poppins', sans-serif; text-align: center; padding: 0 20px; }
+        .modal .modal-content { padding: 20px; max-width: 340px; width: 90%; background-color: var(--bg-secondary); border-radius: var(--border-radius); box-shadow: var(--shadow); position: relative; transform: translateY(-50px); animation: fadeIn 0.3s forwards; display: flex; flex-direction: column; align-items: center; box-sizing: border-box; }
+        #calendarModal .modal-content { padding: 20px; max-width: 340px; width: 90%; border-radius: var(--border-radius); }
+        .calendar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; width: 100%; }
+        .calendar-header button { background: none; border: none; color: var(--text-primary); font-size: 24px; cursor: pointer; width: 40px; height: 40px; border-radius: var(--border-radius); transition: background-color 0.2s; }
+        .calendar-header button:hover { background-color: var(--bg-tertiary); }
+        #currentMonthYear { font-size: 1.1em; font-weight: 600; }
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; overflow: hidden; width: 100%; }
+        #calendarDays { min-height: 277px; }
+        .calendar-day, .day-name { display: flex; justify-content: center; align-items: center; height: 42px; border-radius: var(--border-radius-sm); font-size: 0.85em; }
+        .day-name { font-weight: 600; color: var(--text-secondary); }
+        .calendar-day { cursor: pointer; border: 1px solid transparent; transition: background-color 0.2s, border-color 0.2s; }
+        .calendar-day:not(.empty):hover { background-color: var(--bg-tertiary); }
+        .calendar-day.today { border-color: var(--accent-color); color: var(--accent-color); }
+        .calendar-day.selected { background-color: var(--accent-color); color: var(--bg-primary); font-weight: bold; }
+        .calendar-day.empty { cursor: default; }
+        .close-modal { margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <div id="loading-screen">
+        <div class="spinner"></div>
+        <p id="loading-message">Carregando...</p>
+    </div>
+    <div class="wave-container">
+        <div class="wave wave-top"></div><div class="wave wave1"></div><div class="wave wave2"></div><div class="wave wave3"></div>
+    </div>
+    <div class="modal" id="calendarModal" style="display: none;">
+        <div class="modal-content">
+            <div class="calendar-header">
+                <button id="prevMonthBtn">&lt;</button><span id="currentMonthYear"></span><button id="nextMonthBtn">&gt;</button>
+            </div>
+            <div class="calendar-grid" id="dayNames"></div>
+            <div class="calendar-grid" id="calendarDays"></div>
+            <button class="close-modal" onclick="fecharJanela('calendarModal')">Fechar</button>
+        </div>
+    </div>
+    <div class="container">
+        <header>
+            <h1>Escala de Trabalho</h1>
+            <p>Aqui está sua escala de trabalho e folgas.</p>
+        </header>
+        <main>
+            <div class="form-group">
+                <button id="openCalendarBtn"><span>Selecionar Data</span></button>
+            </div>
+            <div id="scheduleList">
+                <div id="sentinelaInicio" style="height: 1px;"></div>
+                <div id="sentinelaFim" style="height: 1px;"></div>
+            </div>
+            <div class="button-grid" style="margin-top: 15px;">
+                <button id="scrollToTodayBtn">Hoje</button>
+                <button id="findNextWorkBtn">Próx. Trabalho</button>
+                <button id="findNextOffBtn">Próx. Folga</button>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const telaDeCarregamento = document.getElementById('loading-screen');
+            const mensagemCarregamento = document.getElementById('loading-message');
+            const conteudoPrincipal = document.querySelector('.container');
+            const hojeDeVerdade = new Date();
+            hojeDeVerdade.setHours(0, 0, 0, 0);
+
+            const listaDaEscala = document.getElementById('scheduleList');
+            const sentinelaInicio = document.getElementById('sentinelaInicio');
+            const sentinelaFim = document.getElementById('sentinelaFim');
+            const botaoAbrirCalendario = document.getElementById('openCalendarBtn');
+            const infoMesAno = document.getElementById('currentMonthYear');
+            const gridDosDias = document.getElementById('calendarDays');
+            const gridNomesDosDias = document.getElementById('dayNames');
+            const botaoMesAnterior = document.getElementById('prevMonthBtn');
+            const botaoProximoMes = document.getElementById('nextMonthBtn');
+            const botaoIrPraHoje = document.getElementById('scrollToTodayBtn');
+            const botaoAcharProximoTrabalho = document.getElementById('findNextWorkBtn');
+            const botaoAcharProximaFolga = document.getElementById('findNextOffBtn');
+
+            let ultimoElementoFocado = null;
+            let dataDoCalendario = new Date();
+            const idioma = 'pt-BR';
+            let primeiraDataCarregada = null;
+            let ultimaDataCarregada = null;
+            let mapaDaEscala = {};
+
+            function mostrarTelaDeCarregamento(mensagem) {
+                mensagemCarregamento.textContent = mensagem;
+                telaDeCarregamento.classList.add('visible');
+                setTimeout(() => { telaDeCarregamento.style.opacity = '1'; }, 10);
+            }
+
+            function esconderTelaDeCarregamento() {
+                telaDeCarregamento.style.opacity = '0';
+                setTimeout(() => { telaDeCarregamento.classList.remove('visible'); }, 400);
+            }
+
+            const obterIdDaData = (data) => `date-${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}-${String(data.getDate()).padStart(2, '0')}`;
+            const formatarDataParaBusca = (data) => data.toISOString().split('T')[0];
+
+            function criarItemDaEscala(dataDoItem) {
+                const dataFormatada = formatarDataParaBusca(dataDoItem);
+                const eDiaDeTrabalho = mapaDaEscala[dataFormatada];
+                if (eDiaDeTrabalho === undefined) return null;
+                const itemDaEscala = document.createElement('div');
+                itemDaEscala.className = 'schedule-item';
+                itemDaEscala.id = obterIdDaData(dataDoItem);
+                if (dataDoItem.getTime() === hojeDeVerdade.getTime()) {
+                    itemDaEscala.classList.add('today');
+                }
+                const nomeDoDia = new Intl.DateTimeFormat(idioma, { weekday: 'long' }).format(dataDoItem);
+                const dataCompleta = new Intl.DateTimeFormat(idioma, { day: 'numeric', month: 'long', year: 'numeric' }).format(dataDoItem);
+                itemDaEscala.innerHTML = `
+                    <div class="date-info">
+                        <b>${nomeDoDia.charAt(0).toUpperCase() + nomeDoDia.slice(1)}</b>,
+                        <span>${dataCompleta}</span>
+                    </div>
+                    <span class="task-status ${eDiaDeTrabalho ? 'status-work' : 'status-off'}">${eDiaDeTrabalho ? 'Trabalha' : 'Folga'}</span>
+                `;
+                return itemDaEscala;
+            }
+
+            function carregarLoteDeDias(dataDePartida, quantidade, direcao) {
+                const blocoDeItens = document.createDocumentFragment();
+                for (let i = 0; i < quantidade; i++) {
+                    const dataAtual = new Date(dataDePartida);
+                    dataAtual.setDate(dataDePartida.getDate() + (i * direcao));
+                    const novoItem = criarItemDaEscala(dataAtual);
+                    if (novoItem) {
+                       direcao === 1 ? blocoDeItens.appendChild(novoItem) : blocoDeItens.prepend(novoItem);
+                    }
+                }
+                return blocoDeItens;
+            }
+            
+            function rolarParaElemento(elemento, comportamento = 'smooth') {
+                if (!elemento) return;
+                if (ultimoElementoFocado) ultimoElementoFocado.classList.remove('focused');
+                elemento.scrollIntoView({ behavior: comportamento, block: 'center' });
+                elemento.classList.add('focused');
+                ultimoElementoFocado = elemento;
+            }
+
+            function irParaData(dataAlvo, comportamento = 'smooth') {
+                const idAlvo = obterIdDaData(dataAlvo);
+                let elementoAlvo = document.getElementById(idAlvo);
+
+                if (elementoAlvo) {
+                    rolarParaElemento(elementoAlvo, comportamento);
+                    return;
+                }
+
+                mostrarTelaDeCarregamento('Carregando até a data selecionada...');
+                setTimeout(() => {
+                    listaDaEscala.style.scrollBehavior = 'auto';
+                    let alturaAntiga = listaDaEscala.scrollHeight;
+
+                    if (dataAlvo > ultimaDataCarregada) {
+                        while (dataAlvo > ultimaDataCarregada) {
+                            let pontoDePartida = new Date(ultimaDataCarregada);
+                            pontoDePartida.setDate(pontoDePartida.getDate() + 1);
+                            const blocoFuturo = carregarLoteDeDias(pontoDePartida, 30, 1);
+                            listaDaEscala.insertBefore(blocoFuturo, sentinelaFim);
+                            ultimaDataCarregada.setDate(ultimaDataCarregada.getDate() + 30);
+                        }
+                    } else if (dataAlvo < primeiraDataCarregada) {
+                        while (dataAlvo < primeiraDataCarregada) {
+                            let pontoDePartida = new Date(primeiraDataCarregada);
+                            pontoDePartida.setDate(pontoDePartida.getDate() - 1);
+                            const blocoPassado = carregarLoteDeDias(pontoDePartida, 30, -1);
+                            listaDaEscala.prepend(blocoPassado);
+                            primeiraDataCarregada.setDate(primeiraDataCarregada.getDate() - 30);
+                        }
+                    }
+                    
+                    listaDaEscala.scrollTop += listaDaEscala.scrollHeight - alturaAntiga;
+                    elementoAlvo = document.getElementById(idAlvo);
+                    if (elementoAlvo) {
+                        rolarParaElemento(elementoAlvo, 'auto');
+                    }
+                    esconderTelaDeCarregamento();
+                    requestAnimationFrame(() => { listaDaEscala.style.scrollBehavior = 'smooth'; });
+                }, 50);
+            }
+
+            window.abrirJanela = (id) => document.getElementById(id).style.display = 'flex';
+            window.fecharJanela = (id) => document.getElementById(id).style.display = 'none';
+
+            function gerarCalendario(ano, mes) {
+                gridDosDias.innerHTML = '';
+                const nomeDoMes = new Date(ano, mes).toLocaleString(idioma, { month: 'long' });
+                infoMesAno.textContent = `${nomeDoMes.charAt(0).toUpperCase() + nomeDoMes.slice(1)} de ${ano}`;
+                const primeiroDiaDoMes = new Date(ano, mes, 1).getDay();
+                const diasNoMes = new Date(ano, mes + 1, 0).getDate();
+                
+                for (let i = 0; i < primeiroDiaDoMes; i++) gridDosDias.innerHTML += `<div class="calendar-day empty"></div>`;
+                
+                for (let dia = 1; dia <= diasNoMes; dia++) {
+                    const elementoDia = document.createElement('div');
+                    elementoDia.className = 'calendar-day';
+                    elementoDia.textContent = dia;
+                    const dataAtual = new Date(ano, mes, dia);
+                    if (dataAtual.getTime() === hojeDeVerdade.getTime()) elementoDia.classList.add('today');
+                    
+                    elementoDia.addEventListener('click', () => {
+                        const dataSelecionada = new Date(ano, mes, dia);
+                        botaoAbrirCalendario.querySelector('span').textContent = dataSelecionada.toLocaleDateString(idioma, {day: '2-digit', month: '2-digit', year: 'numeric'});
+                        fecharJanela('calendarModal');
+                        irParaData(dataSelecionada);
+                    });
+                    gridDosDias.appendChild(elementoDia);
+                }
+            }
+            
+            botaoAbrirCalendario.addEventListener('click', () => {
+                dataDoCalendario = new Date();
+                gerarCalendario(dataDoCalendario.getFullYear(), dataDoCalendario.getMonth());
+                abrirJanela('calendarModal');
+            });
+            botaoMesAnterior.addEventListener('click', () => {
+                dataDoCalendario.setMonth(dataDoCalendario.getMonth() - 1);
+                gerarCalendario(dataDoCalendario.getFullYear(), dataDoCalendario.getMonth());
+            });
+            botaoProximoMes.addEventListener('click', () => {
+                dataDoCalendario.setMonth(dataDoCalendario.getMonth() + 1);
+                gerarCalendario(dataDoCalendario.getFullYear(), dataDoCalendario.getMonth());
+            });
+            botaoIrPraHoje.addEventListener('click', () => irParaData(hojeDeVerdade));
+            
+            function encontrarProximo(eParaTrabalhar) {
+                let dataDeReferencia = hojeDeVerdade;
+                const elementoDeReferencia = ultimoElementoFocado || document.querySelector('.today');
+                if (elementoDeReferencia) {
+                    const [ano, mes, dia] = elementoDeReferencia.id.replace('date-', '').split('-').map(Number);
+                    dataDeReferencia = new Date(ano, mes - 1, dia);
+                }
+
+                let proximaData = new Date(dataDeReferencia);
+                for (let i = 0; i < 365 * 80; i++) {
+                    proximaData.setDate(proximaData.getDate() + 1);
+                    const statusTrabalho = mapaDaEscala[formatarDataParaBusca(proximaData)];
+                    if (statusTrabalho === eParaTrabalhar) {
+                        irParaData(proximaData);
+                        return;
+                    }
+                }
+                alert('Próxima data não encontrada. Tente selecionar uma data mais distante manualmente.');
+            }
+
+            botaoAcharProximoTrabalho.addEventListener('click', () => encontrarProximo(true));
+            botaoAcharProximaFolga.addEventListener('click', () => encontrarProximo(false));
+
+            const nomesDosDiasDaSemana = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
+            nomesDosDiasDaSemana.forEach(nome => gridNomesDosDias.innerHTML += `<div class="day-name">${nome}</div>`);
+            
+            mostrarTelaDeCarregamento('Carregando escala de Felipe...');
+
+            fetch('escala.json')
+                .then(resposta => {
+                    if (!resposta.ok) { throw new Error(`Erro de rede: ${resposta.statusText}`); }
+                    return resposta.json();
+                })
+                .then(dados => {
+                    dados.forEach(dia => { mapaDaEscala[dia.data] = dia.trabalha; });
+                    
+                    conteudoPrincipal.classList.add('loaded');
+                    esconderTelaDeCarregamento();
+
+                    let dataCargaInicial = new Date(hojeDeVerdade);
+                    dataCargaInicial.setDate(hojeDeVerdade.getDate() - 60);
+                    primeiraDataCarregada = new Date(dataCargaInicial);
+                    ultimaDataCarregada = new Date(dataCargaInicial);
+                    ultimaDataCarregada.setDate(dataCargaInicial.getDate() + 120);
+
+                    const blocoInicial = carregarLoteDeDias(dataCargaInicial, 121, 1);
+                    listaDaEscala.insertBefore(blocoInicial, sentinelaFim);
+                    
+                    setTimeout(() => { irParaData(hojeDeVerdade, 'auto'); }, 50);
+                    
+                    const observador = new IntersectionObserver((entradas) => {
+                        entradas.forEach(entrada => {
+                            if (!entrada.isIntersecting) return;
+                            if (entrada.target.id === 'sentinelaFim') {
+                                let pontoDePartida = new Date(ultimaDataCarregada);
+                                pontoDePartida.setDate(pontoDePartida.getDate() + 1);
+                                const blocoFuturo = carregarLoteDeDias(pontoDePartida, 30, 1);
+                                listaDaEscala.insertBefore(blocoFuturo, sentinelaFim);
+                                ultimaDataCarregada.setDate(ultimaDataCarregada.getDate() + 30);
+                            } else if (entrada.target.id === 'sentinelaInicio') {
+                                listaDaEscala.style.scrollBehavior = 'auto';
+                                const alturaAntiga = listaDaEscala.scrollHeight;
+                                let pontoDePartida = new Date(primeiraDataCarregada);
+                                pontoDePartida.setDate(pontoDePartida.getDate() - 1);
+                                const blocoPassado = carregarLoteDeDias(pontoDePartida, 30, -1);
+                                listaDaEscala.prepend(blocoPassado);
+                                primeiraDataCarregada.setDate(primeiraDataCarregada.getDate() - 30);
+                                listaDaEscala.scrollTop += listaDaEscala.scrollHeight - alturaAntiga;
+                                requestAnimationFrame(() => { listaDaEscala.style.scrollBehavior = 'smooth'; });
+                            }
+                        });
+                    }, { root: listaDaEscala, rootMargin: '300px' });
+                    observador.observe(sentinelaFim);
+                    observador.observe(sentinelaInicio);
+                })
+                .catch(erro => {
+                    console.error('Falha ao carregar o arquivo escala.json:', erro);
+                    mensagemCarregamento.textContent = 'Erro ao carregar a escala. Verifique o console.';
+                    telaDeCarregamento.classList.add('visible');
+                    telaDeCarregamento.style.opacity = '1';
+                });
+        });
+    </script>
+</body>
+</html>
